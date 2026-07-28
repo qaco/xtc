@@ -1,5 +1,5 @@
 # RUN: python %s 2>&1 | filecheck %s
-# REQUIRES: module_iree
+# REQUIRES: module_iree_runtime
 
 # End-to-end IREE backend: build a matmul graph, schedule it, compile to a vmfb
 # and run it through the IREE runtime, validating against the numpy reference.
