@@ -5,6 +5,7 @@
 import os
 import sys
 import tempfile
+from dataclasses import fields
 from typing import Any, TYPE_CHECKING, cast
 from typing_extensions import override
 
@@ -23,6 +24,10 @@ from .IREEScheduler import IREESchedule
 
 if TYPE_CHECKING:
     from .IREEBackend import IREEBackend
+
+# Config field names, computed once: the exploration pipeline passes many
+# backend-generic compile flags, but only these are forwarded to IREEConfig.
+_IREE_CONFIG_FIELDS = frozenset(f.name for f in fields(IREEConfig))
 
 __all__ = [
     "IREECompiler",
@@ -76,10 +81,11 @@ class IREECompiler(itf.comp.Compiler):
 
     def __init__(self, backend: "IREEBackend", **kwargs: Any) -> None:
         self._backend = backend
-        # shared_lib is accepted for API parity with the other backends but
-        # ignored: IREE always produces a vmfb.
-        kwargs.pop("shared_lib", None)
-        self._config = IREEConfig(**kwargs)
+        # The exploration pipeline passes many backend-generic compile flags;
+        # keep only the keys IREEConfig understands and ignore the rest.
+        self._config = IREEConfig(
+            **{k: v for k, v in kwargs.items() if k in _IREE_CONFIG_FIELDS}
+        )
 
     @property
     @override

@@ -161,6 +161,7 @@ OPERATORS = {
             "mlir": {},
             "tvm": {},
             "jir": {},
+            "iree": {},
         },
         "default_strategy": "tile_oo",
     },

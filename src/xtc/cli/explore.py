@@ -111,7 +111,7 @@ def main():
         "--backends",
         type=str,
         nargs="+",
-        choices=["mlir", "tvm", "jir"],
+        choices=["mlir", "tvm", "jir", "iree"],
         default=defaults.backends,
         help="backends to use",
     )
