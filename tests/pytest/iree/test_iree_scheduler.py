@@ -103,13 +103,10 @@ def test_selective_parallelize():
 
 
 def test_unsupported_primitives_raise():
-    # Primitives IREE would silently override must fail loudly, not warn.
+    # Primitives that would change the computation structure must fail loudly,
+    # not degrade silently.
     impl = matmul_impl(*MATMUL_ARGS, "matmul")
     sch = impl.get_scheduler()
-    with pytest.raises(NotImplementedError):
-        sch.interchange(["k", "i", "j"])
-    with pytest.raises(NotImplementedError):
-        sch.unroll({"i": 4})
     with pytest.raises(NotImplementedError):
         sch.split("i", {"i1": 32})
     with pytest.raises(NotImplementedError):
@@ -118,6 +115,24 @@ def test_unsupported_primitives_raise():
         sch.pack_at("i", 0)
     with pytest.raises(NotImplementedError):
         sch.fuse_producer_at("i", 0)
+
+
+def test_interchange_and_unroll_are_noops():
+    # Loop ordering and unrolling are chosen by IREE's own codegen, so these are
+    # silently ignored (no-ops) rather than raised, leaving the schedule
+    # unchanged.
+    def base(sch):
+        sch.tile("i", {"i1": 16})
+        sch.tile("j", {"j1": 16})
+        sch.tile("k", {"k1": 16})
+        sch.vectorize(["j1"])
+
+    def with_noops(sch):
+        base(sch)
+        sch.interchange(["k", "i", "j"])
+        sch.unroll({"i": 4})
+
+    assert _schedule_str(with_noops) == _schedule_str(base)
 
 
 def test_vectorize_reduction_axis():

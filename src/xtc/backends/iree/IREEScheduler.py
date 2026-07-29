@@ -236,15 +236,13 @@ class IREENodeSchedule:
         def cache_reduction_tile(d: str) -> int:
             if d not in reduction or d not in self.tiles:
                 return 0
-            if len(self.tiles[d]) > 1:
+            loop = self._loop_levels(d)
+            if len(loop) > 1:
                 raise NotImplementedError(
                     f"IREE backend: cannot map deeper reduction tile levels "
-                    f"{self.tiles[d][1:]} of dimension {d!r}; keep a single "
-                    f"reduction tile level"
+                    f"{loop[1:]} of dimension {d!r}; keep a single cache_reduction "
+                    f"level (plus an optional vectorized inner tile)"
                 )
-            # A vectorized reduction tile moves to vector_reduction, leaving no
-            # cache_reduction loop level.
-            loop = self._loop_levels(d)
             return loop[0] if loop else 0
 
         add_field("cache_reduction", [cache_reduction_tile(d) for d in self.dims])
@@ -360,11 +358,11 @@ class IREEScheduler(itf.schd.Scheduler):
 
     @override
     def interchange(self, permutation: list[str], root: str = DEFAULT_ROOT) -> None:
-        raise NotImplementedError("IREE backend does not support interchange()")
+        pass
 
     @override
     def unroll(self, unrolls: dict[str, int], root: str = DEFAULT_ROOT) -> None:
-        raise NotImplementedError("IREE backend does not support unroll()")
+        pass
 
     @override
     def buffer_at(
