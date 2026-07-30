@@ -53,6 +53,49 @@ def test_evaluate_nop_schedule():
 
 
 @requires_iree_runtime
+def test_evaluate_with_parameters_writeback(tmp_path):
+    # When explicit (inputs, outputs) arrays are passed, the evaluator runs the
+    # kernel on them and writes the results back into the output arrays in place.
+    import numpy as np
+
+    impl = matmul_impl(*MATMUL_ARGS, "matmul")
+    module = impl.get_compiler(dump_file=str(tmp_path / "m")).compile(
+        _schedule(impl, _tiled_vectorized)
+    )
+    a = np.random.rand(I, K).astype("float32")
+    b = np.random.rand(K, J).astype("float32")
+    out = np.zeros((I, J), dtype="float32")
+    with np.errstate(all="ignore"):
+        expected = a @ b
+
+    evaluator = module.get_evaluator(
+        parameters=([a, b], [out]), repeat=1, number=1, min_repeat_ms=0
+    )
+    _, code, _ = evaluator.evaluate()
+    assert code == 0
+    assert np.allclose(out, expected, rtol=1e-4, atol=1e-4)
+
+
+def test_init_zero_builds_zero_inputs():
+    # init_zero must fill every input with zeros; the default filler is non-zero.
+    import numpy as np
+    from types import SimpleNamespace
+    from xtc.targets.iree.IREEEvaluator import IREEEvaluator
+
+    def spec():
+        return [{"shape": (4, 4), "dtype": "float32"}]
+
+    stub = SimpleNamespace(
+        _np_inputs_spec=spec, _np_outputs_spec=spec, _reference_impl=None
+    )
+    zeroed = IREEEvaluator(stub, init_zero=True)._make_inputs()
+    assert zeroed and all(np.all(x == 0) for x in zeroed)
+    # Contrast: the default filler produces at least one non-zero input.
+    filled = IREEEvaluator(stub, init_zero=False)._make_inputs()
+    assert not all(np.all(x == 0) for x in filled)
+
+
+@requires_iree_runtime
 def test_evaluate_parallelized():
     impl = matmul_impl(*MATMUL_ARGS, "matmul")
 

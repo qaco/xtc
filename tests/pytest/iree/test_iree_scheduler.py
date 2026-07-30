@@ -117,6 +117,78 @@ def test_unsupported_primitives_raise():
         sch.fuse_producer_at("i", 0)
 
 
+def test_unsupported_distribution_primitives_raise():
+    # Meshes and explicit distribution have no IREE mapping, so they raise.
+    impl = matmul_impl(*MATMUL_ARGS, "matmul")
+    sch = impl.get_scheduler()
+    with pytest.raises(NotImplementedError):
+        sch.define_memory_mesh({"x": 2})
+    with pytest.raises(NotImplementedError):
+        sch.define_processor_mesh({"x": 2})
+    with pytest.raises(NotImplementedError):
+        sch.distribute("i", "x")
+    with pytest.raises(NotImplementedError):
+        sch.distributed_buffer_at("i", 0, ["x"])
+    with pytest.raises(NotImplementedError):
+        sch.get_loop_nest()
+
+
+def test_set_dims_resets_tiling():
+    # set_dims re-declares the loop dimensions and clears any recorded tiling.
+    impl = matmul_impl(*MATMUL_ARGS, "matmul")
+    sch = impl.get_scheduler()
+    sch.tile("i", {"i1": 16})
+    sch.set_dims(["i", "j", "k"])
+    # Tiling was cleared, so the schedule is back to an empty lowering config.
+    assert str(sch.schedule()) == "{}"
+
+
+def test_vectorize_untiled_dim_uses_default_width():
+    # Vectorizing a base dimension that carries no tile size falls back to the
+    # default SIMD width (16).
+    def sched(sch):
+        sch.tile("i", {"i1": 16})
+        sch.parallelize(["i"])
+        sch.vectorize(["j"])  # j is an untiled base dimension
+
+    text = _schedule_str(sched)
+    assert "vector_common_parallel = [0, 16, 0]" in text
+
+
+def test_vectorize_unknown_axis_raises():
+    # A vectorized axis that maps to no known dimension is a user error.
+    def sched(sch):
+        sch.tile("i", {"i1": 16})
+        sch.parallelize(["i"])
+        sch.vectorize(["zzz"])
+
+    with pytest.raises(ValueError):
+        _schedule_str(sched)
+
+
+def test_vector_width_above_limit_raises():
+    # A vectorized tile wider than the IREE vector-size limit (32) is rejected
+    # rather than silently narrowed.
+    def sched(sch):
+        sch.tile("j", {"j1": 64})
+        sch.parallelize(["j"])
+        sch.vectorize(["j1"])
+
+    with pytest.raises(NotImplementedError):
+        _schedule_str(sched)
+
+
+def test_distributed_dim_with_too_many_levels_raises():
+    # A distributed (parallelized) dimension gets at most two loop levels
+    # (distribution + cache_parallel); a third has no mapping.
+    def sched(sch):
+        sch.tile("i", {"i1": 32, "i2": 8, "i3": 2})
+        sch.parallelize(["i"])
+
+    with pytest.raises(NotImplementedError):
+        _schedule_str(sched)
+
+
 def test_interchange_and_unroll_are_noops():
     # Loop ordering and unrolling are chosen by IREE's own codegen, so these are
     # silently ignored (no-ops) rather than raised, leaving the schedule

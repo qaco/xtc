@@ -11,6 +11,13 @@ def _generate(sched_func):
     return impl.get_compiler().generate_mlir(sch.schedule())
 
 
+def test_compiler_exposes_backend_and_config():
+    impl = matmul_impl(*MATMUL_ARGS, "matmul")
+    compiler = impl.get_compiler(target_cpu="sentinel-cpu")
+    assert compiler.backend is impl
+    assert compiler.config.target_cpu == "sentinel-cpu"
+
+
 def test_generate_mlir_value_semantics():
     # The output memref argument is dropped and the result tensor is returned.
     text = _generate(lambda sch: None)

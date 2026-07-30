@@ -8,6 +8,9 @@ __all__ = [
     "IREEConfig",
 ]
 
+# IREE codegen pass after which the lowering config has been fully realized.
+_TRANSFORMED_IR_PASS = "iree-codegen-generic-vectorization"
+
 
 @dataclass(frozen=True)
 class IREEConfig:
@@ -22,6 +25,7 @@ class IREEConfig:
     target_triple: str | None = None
     dump_file: str | None = None
     print_source_ir: bool = False
+    print_transformed_ir: bool = False
     extra_args: list[str] = field(default_factory=list)
 
     def iree_compile_args(self) -> list[str]:
@@ -34,5 +38,9 @@ class IREEConfig:
             args.append(
                 f"--iree-llvmcpu-target-cpu-features={self.target_cpu_features}"
             )
+        if self.print_transformed_ir:
+            args.append(f"--mlir-print-ir-after={_TRANSFORMED_IR_PASS}")
+            args.append("--mlir-disable-threading")
+            args.append("--mlir-print-debuginfo=false")
         args.extend(self.extra_args)
         return args

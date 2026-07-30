@@ -17,6 +17,41 @@ def test_iree_dtype_mapping():
 
 
 @requires_iree_runtime
+def test_shim_is_rebuilt_when_missing():
+    # The shim is compiled lazily and cached under the prefix; if the cached
+    # library is gone, the next request rebuilds it from the IREE C SDK.
+    import ctypes
+    from xtc.runtimes.iree.IREERuntime import _shim_library_path
+
+    lib_path = _shim_library_path()  # ensure it exists (build if needed)
+    lib_path.unlink()
+    assert not lib_path.exists()
+
+    rebuilt = _shim_library_path()  # triggers the lazy cc/c++ build
+    assert rebuilt == lib_path and rebuilt.exists()
+    # The freshly built library loads and exposes the shim entry points.
+    assert ctypes.CDLL(str(rebuilt)).xtc_iree_setup is not None
+
+
+@requires_iree_runtime
+def test_setup_failure_raises(tmp_path):
+    # A missing/invalid vmfb makes xtc_iree_setup return NULL, surfaced as a
+    # RuntimeError carrying the shim's last error.
+    import numpy as np
+    from xtc.runtimes.iree.IREERuntime import IREERuntime
+
+    arr = np.zeros((4, 4), dtype="float32")
+    with pytest.raises(RuntimeError):
+        IREERuntime().setup(
+            vmfb_path=str(tmp_path / "does_not_exist.vmfb"),
+            entry_function="module.nope",
+            single_thread=True,
+            inputs=[arr],
+            outputs=[arr],
+        )
+
+
+@requires_iree_runtime
 def test_runtime_setup_invoke_matches_reference(tmp_path):
     # Drive a compiled matmul directly through the runtime, below the evaluator:
     # setup -> readback invoke populates the output -> it matches numpy, and
