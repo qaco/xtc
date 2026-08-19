@@ -10,6 +10,12 @@
 
 #include "iree/runtime/api.h"
 
+/* For explicit local-task device creation with a sized, P-core-pinned pool. */
+#include "iree/hal/drivers/local_task/task_device.h"
+#include "iree/hal/local/executable_loader.h"
+#include "iree/hal/local/loaders/registration/init.h"
+#include "iree/task/api.h"
+
 /* ------------------------------------------------------------------ errors */
 
 static char g_error[512];
@@ -99,8 +105,73 @@ static iree_status_t make_input_view(iree_hal_device_t *device,
   return status;
 }
 
+/* Build a local-task device whose worker pool has `num_threads` workers pinned
+ * to that many high-performance physical cores. Falls back to a plain group
+ * count when P-cores can't be enumerated (e.g. homogeneous machines). */
+static iree_status_t create_local_task_device(iree_runtime_instance_t *instance,
+                                              int num_threads,
+                                              iree_hal_device_t **out_device) {
+  iree_allocator_t host_allocator =
+      iree_runtime_instance_host_allocator(instance);
+  *out_device = NULL;
+
+  iree_task_topology_t topology;
+  iree_status_t status = iree_task_topology_initialize_from_physical_cores(
+      IREE_TASK_TOPOLOGY_NODE_ID_ANY, IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_HIGH,
+      IREE_TASK_TOPOLOGY_DISTRIBUTION_COMPACT, (iree_host_size_t)num_threads,
+      &topology);
+  if (iree_status_is_ok(status) &&
+      iree_task_topology_group_count(&topology) == 0) {
+    /* No P-cores enumerated: fall back to a plain worker count (returns void). */
+    iree_task_topology_deinitialize(&topology);
+    iree_task_topology_initialize_from_group_count((iree_host_size_t)num_threads,
+                                                   &topology);
+  }
+
+  iree_task_executor_t *executor = NULL;
+  if (iree_status_is_ok(status)) {
+    iree_task_executor_options_t options;
+    iree_task_executor_options_initialize(&options);
+    status =
+        iree_task_executor_create(options, &topology, host_allocator, &executor);
+  }
+  iree_task_topology_deinitialize(&topology);
+
+  iree_hal_executable_loader_t *loaders[8];
+  iree_host_size_t loader_count = 0;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_create_all_available_executable_loaders(
+        /*plugin_manager=*/NULL, IREE_ARRAYSIZE(loaders), &loader_count, loaders,
+        host_allocator);
+  }
+
+  iree_hal_allocator_t *device_allocator = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_allocator_create_heap(
+        iree_make_cstring_view("local-task"), host_allocator, host_allocator,
+        &device_allocator);
+  }
+
+  if (iree_status_is_ok(status)) {
+    iree_hal_task_device_params_t params;
+    iree_hal_task_device_params_initialize(&params);
+    status = iree_hal_task_device_create(
+        iree_make_cstring_view("local-task"), &params, /*queue_count=*/1,
+        &executor, loader_count, loaders, device_allocator, host_allocator,
+        out_device);
+  }
+
+  /* The device retains what it needs; drop our local references. */
+  for (iree_host_size_t i = 0; i < loader_count; ++i) {
+    iree_hal_executable_loader_release(loaders[i]);
+  }
+  if (device_allocator) iree_hal_allocator_release(device_allocator);
+  if (executor) iree_task_executor_release(executor);
+  return status;
+}
+
 void *xtc_iree_setup(const char *vmfb_path, const char *entry_function,
-                     int single_thread, const xtc_ndarray_desc_t *inputs,
+                     int num_threads, const xtc_ndarray_desc_t *inputs,
                      int n_inputs, const xtc_ndarray_desc_t *outputs,
                      int n_outputs) {
   g_error[0] = '\0';
@@ -119,11 +190,16 @@ void *xtc_iree_setup(const char *vmfb_path, const char *entry_function,
   iree_status_t status = iree_runtime_instance_create(
       &instance_options, host_allocator, &ctx->instance);
 
-  /* Pick the CPU device: local-sync runs inline, local-task uses a thread pool. */
+  /* Create the CPU device: local-sync runs inline; local-task uses a pool of
+   * num_threads workers pinned to P-cores (see create_local_task_device). */
   if (iree_status_is_ok(status)) {
-    const char *driver = single_thread ? "local-sync" : "local-task";
-    status = iree_runtime_instance_try_create_default_device(
-        ctx->instance, iree_make_cstring_view(driver), &ctx->device);
+    if (num_threads <= 1) {
+      status = iree_runtime_instance_try_create_default_device(
+          ctx->instance, iree_make_cstring_view("local-sync"), &ctx->device);
+    } else {
+      status =
+          create_local_task_device(ctx->instance, num_threads, &ctx->device);
+    }
   }
 
   /* Open a session on that device to hold loaded modules and state. */

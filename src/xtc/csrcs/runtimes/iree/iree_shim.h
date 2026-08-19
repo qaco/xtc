@@ -31,16 +31,18 @@ typedef struct {
 /*
  * Build an invocation context for `entry_function` of the module in `vmfb_path`.
  *
- * `single_thread` selects the HAL driver: 0 -> "local-task" (workgroups spread
- * over worker threads), non-zero -> "local-sync" (everything on the caller
- * thread). Input buffers are filled from the descriptors once here (outside any
- * timed region); output descriptors record where results are copied back after
- * each invocation.
+ * `num_threads` selects the HAL device and sizes its worker pool: <= 1 ->
+ * "local-sync" (everything on the caller thread); > 1 -> "local-task" with a
+ * thread pool of `num_threads` workers pinned to that many high-performance
+ * physical cores (falling back to a plain group count if P-cores can't be
+ * detected). Input buffers are filled from the descriptors once here (outside
+ * any timed region); output descriptors record where results are copied back
+ * after each invocation.
  *
  * Returns an opaque handle, or NULL on error.
  */
 void *xtc_iree_setup(const char *vmfb_path, const char *entry_function,
-                     int single_thread, const xtc_ndarray_desc_t *inputs,
+                     int num_threads, const xtc_ndarray_desc_t *inputs,
                      int n_inputs, const xtc_ndarray_desc_t *outputs,
                      int n_outputs);
 

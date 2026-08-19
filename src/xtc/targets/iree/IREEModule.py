@@ -95,12 +95,24 @@ class IREEModule(itf.comp.Module):
         # The vmfb is already written to file_name by the compiler.
         pass
 
+    def _resolve_num_threads(self, kwargs: dict[str, Any]) -> None:
+        # A non-parallelized schedule runs single-threaded (local-sync); a
+        # parallelized one uses `threads` workers (from the search) if given,
+        # else the evaluator's own default. `threads` is consumed here.
+        if "num_threads" in kwargs:
+            return
+        threads = kwargs.pop("threads", None)
+        if not self._parallelized:
+            kwargs["num_threads"] = 1
+        elif threads is not None:
+            kwargs["num_threads"] = int(threads)
+
     @override
     def get_evaluator(self, **kwargs: Any) -> itf.exec.Evaluator:
-        kwargs.setdefault("single_thread", not self._parallelized)
+        self._resolve_num_threads(kwargs)
         return IREEEvaluator(self, **kwargs)
 
     @override
     def get_executor(self, **kwargs: Any) -> itf.exec.Executor:
-        kwargs.setdefault("single_thread", not self._parallelized)
+        self._resolve_num_threads(kwargs)
         return IREEExecutor(self, **kwargs)

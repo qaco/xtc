@@ -45,7 +45,7 @@ def test_setup_failure_raises(tmp_path):
         IREERuntime().setup(
             vmfb_path=str(tmp_path / "does_not_exist.vmfb"),
             entry_function="module.nope",
-            single_thread=True,
+            num_threads=1,
             inputs=[arr],
             outputs=[arr],
         )
@@ -76,7 +76,7 @@ def test_runtime_setup_invoke_matches_reference(tmp_path):
     ctx = rt.setup(
         vmfb_path=module.file_name,
         entry_function=module.payload_name,
-        single_thread=True,
+        num_threads=1,
         inputs=[a, b],
         outputs=[out],
     )

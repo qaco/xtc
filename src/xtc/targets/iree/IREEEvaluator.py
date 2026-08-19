@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2024-2026 The XTC Project Authors
 #
+import os
 from typing import Any, TYPE_CHECKING
 from typing_extensions import override
 
@@ -37,9 +38,16 @@ class IREEEvaluator(itf.exec.Evaluator):
         self._min_repeat_ms = kwargs.get("min_repeat_ms", 100)
         self._validate = kwargs.get("validate", False)
         self._init_zero = kwargs.get("init_zero", False)
-        # single_thread=True runs on the local-sync HAL device (sequential
-        # workgroups); local-task spreads them over worker threads.
-        self._single_thread = bool(kwargs.get("single_thread"))
+        # num_threads sizes the IREE worker pool: <=1 -> local-sync (inline, on
+        # the measuring thread); >1 -> local-task with that many P-core workers.
+        # Back-compat: a `single_thread` bool still selects 1 vs the default pool.
+        if "num_threads" in kwargs:
+            self._num_threads = max(1, int(kwargs["num_threads"]))
+        elif kwargs.get("single_thread"):
+            self._num_threads = 1
+        else:
+            self._num_threads = os.cpu_count() or 1
+        self._single_thread = self._num_threads <= 1
         self._pmu_counters = kwargs.get("pmu_counters", [])
         # Counters are per-task (inherit=1), so they only capture workers forked
         # as descendants of the measuring thread inside the timed region (as the
@@ -91,7 +99,7 @@ class IREEEvaluator(itf.exec.Evaluator):
         ctx = runtime.setup(
             vmfb_path=self._module.file_name,
             entry_function=self._module.payload_name,
-            single_thread=self._single_thread,
+            num_threads=self._num_threads,
             inputs=inputs,
             outputs=outputs,
         )

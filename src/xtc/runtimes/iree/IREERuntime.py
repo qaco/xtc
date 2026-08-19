@@ -207,11 +207,15 @@ class IREERuntime:
         self,
         vmfb_path: str,
         entry_function: str,
-        single_thread: bool,
+        num_threads: int,
         inputs: list[np.ndarray],
         outputs: list[np.ndarray],
     ) -> ctypes.c_void_p:
-        """Prepare an invocation context; results land in ``outputs`` in place."""
+        """Prepare an invocation context; results land in ``outputs`` in place.
+
+        ``num_threads`` sizes the IREE worker pool: <= 1 runs on local-sync
+        (inline), > 1 uses local-task with that many P-core workers.
+        """
         lib = self._library()
         in_descs = self._make_descs(inputs)
         out_descs = self._make_descs(outputs)
@@ -222,7 +226,7 @@ class IREERuntime:
         ctx = lib.xtc_iree_setup(
             vmfb_path.encode("ascii"),
             entry_function.encode("ascii"),
-            1 if single_thread else 0,
+            int(num_threads),
             in_descs,
             len(inputs),
             out_descs,
