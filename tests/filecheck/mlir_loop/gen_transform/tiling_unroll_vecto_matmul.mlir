@@ -9,6 +9,7 @@ func.func @myfun(
   linalg.matmul
     {
       loop.dims = ["I","J","K"],
+      loop.reduction = ["K"],
       loop.schedule = {
         "I",
           "J",
@@ -45,14 +46,20 @@ func.func @myfun(
 // CHECK-NEXT:      %tiled_linalg_op_6, %loops_7 = transform.structured.tile_using_for %tiled_linalg_op_4 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 // CHECK-NEXT:      transform.annotate %loops_7 "__node0__/K0" : !transform.any_op
 // CHECK-NEXT:      transform.include @_vecto failures(suppress) (%tiled_linalg_op_6) : (!transform.any_op) -> ()
-// CHECK-NEXT:      transform.loop.unroll %loops_7 {factor = 8 : i64} : !transform.any_op
 // CHECK-NEXT:      transform.loop.unroll %loops_5 {factor = 1 : i64} : !transform.any_op
 // CHECK-NEXT:      %1 = transform.get_parent_op %loops {isolated_from_above} : (!transform.any_op) -> !transform.any_op
-// CHECK-NEXT:      transform.apply_patterns to %1 {
+// CHECK-NEXT:      %2 = transform.apply_registered_pass "resolve-ranked-shaped-type-result-dims" to %1 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      transform.apply_cse to %2 : !transform.any_op
+// CHECK-NEXT:      %3 = transform.structured.hoist_redundant_vector_transfers %2 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      %4 = transform.structured.match attributes {"__node0__/I"} in %3 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      %5 = transform.structured.match attributes {"__node0__/K0"} in %3 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      transform.loop.unroll %5 {factor = 8 : i64} : !transform.any_op
+// CHECK-NEXT:      %6 = transform.get_parent_op %4 {isolated_from_above} : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      transform.apply_patterns to %6 {
 // CHECK-NEXT:        transform.apply_patterns.vector.reduction_to_contract
 // CHECK-NEXT:        transform.apply_patterns.vector.transfer_permutation_patterns
 // CHECK-NEXT:      } : !transform.any_op
-// CHECK-NEXT:      transform.apply_patterns to %1 {
+// CHECK-NEXT:      transform.apply_patterns to %6 {
 // CHECK-NEXT:        transform.apply_patterns.vector.lower_outerproduct
 // CHECK-NEXT:        transform.apply_patterns.vector.lower_contraction
 // CHECK-NEXT:      } : !transform.any_op

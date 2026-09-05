@@ -9,6 +9,7 @@ func.func @myfun(
   linalg.matmul
     {
       loop.dims = ["i","j","k"],
+      loop.reduction = ["k"],
       loop.schedule = {
         "k",
           "i" = {"unroll" = 8},
@@ -42,11 +43,16 @@ func.func @myfun(
 // CHECK-NEXT:      transform.loop.unroll %loops_3 {factor = 32 : i64} : !transform.any_op
 // CHECK-NEXT:      transform.loop.unroll %loops_1 {factor = 8 : i64} : !transform.any_op
 // CHECK-NEXT:      %1 = transform.get_parent_op %loops {isolated_from_above} : (!transform.any_op) -> !transform.any_op
-// CHECK-NEXT:      transform.apply_patterns to %1 {
+// CHECK-NEXT:      %2 = transform.apply_registered_pass "resolve-ranked-shaped-type-result-dims" to %1 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      transform.apply_cse to %2 : !transform.any_op
+// CHECK-NEXT:      %3 = transform.structured.hoist_redundant_vector_transfers %2 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      %4 = transform.structured.match attributes {"__node0__/k"} in %3 : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      %5 = transform.get_parent_op %4 {isolated_from_above} : (!transform.any_op) -> !transform.any_op
+// CHECK-NEXT:      transform.apply_patterns to %5 {
 // CHECK-NEXT:        transform.apply_patterns.vector.reduction_to_contract
 // CHECK-NEXT:        transform.apply_patterns.vector.transfer_permutation_patterns
 // CHECK-NEXT:      } : !transform.any_op
-// CHECK-NEXT:      transform.apply_patterns to %1 {
+// CHECK-NEXT:      transform.apply_patterns to %5 {
 // CHECK-NEXT:        transform.apply_patterns.vector.lower_outerproduct
 // CHECK-NEXT:        transform.apply_patterns.vector.lower_contraction
 // CHECK-NEXT:      } : !transform.any_op

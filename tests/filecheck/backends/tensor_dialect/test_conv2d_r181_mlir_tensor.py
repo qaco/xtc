@@ -104,9 +104,15 @@ print(f"CODE: {res}")
 # CHECK-NEXT:      %3 = transform.structured.match interface{LinalgOp} in %2 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      transform.include @_vecto failures(suppress) (%3) : (!transform.any_op) -> ()
 # CHECK-NEXT:      transform.loop.unroll %loops_21 {factor = 4 : i64} : !transform.any_op
-# CHECK-NEXT:      transform.loop.unroll %loops_19 {factor = 3 : i64} : !transform.any_op
 # CHECK-NEXT:      %4 = transform.get_parent_op %loops_7 {isolated_from_above} : (!transform.any_op) -> !transform.any_op
-# CHECK-NEXT:      transform.apply_patterns to %4 {
+# CHECK-NEXT:      %5 = transform.apply_registered_pass "resolve-ranked-shaped-type-result-dims" to %4 : (!transform.any_op) -> !transform.any_op
+# CHECK-NEXT:      transform.apply_cse to %5 : !transform.any_op
+# CHECK-NEXT:      %6 = transform.structured.hoist_redundant_vector_transfers %5 : (!transform.any_op) -> !transform.any_op
+# CHECK-NEXT:      %7 = transform.structured.match attributes {"./b"} in %6 : (!transform.any_op) -> !transform.any_op
+# CHECK-NEXT:      %8 = transform.structured.match attributes {"./c"} in %6 : (!transform.any_op) -> !transform.any_op
+# CHECK-NEXT:      transform.loop.unroll %8 {factor = 3 : i64} : !transform.any_op
+# CHECK-NEXT:      %9 = transform.get_parent_op %7 {isolated_from_above} : (!transform.any_op) -> !transform.any_op
+# CHECK-NEXT:      transform.apply_patterns to %9 {
 # CHECK-NEXT:        transform.apply_patterns.vector.reduction_to_contract
 # CHECK-NEXT:        transform.apply_patterns.vector.transfer_permutation_patterns
 # CHECK-NEXT:      } : !transform.any_op
@@ -119,9 +125,9 @@ print(f"CODE: {res}")
 # CHECK-NEXT:  module attributes {transform.with_named_sequence} {
 # CHECK-NEXT:    func.func @conv2d_nhwc_r181(%arg0: tensor<1x230x230x3xf32> {llvm.noalias}, %arg1: tensor<7x7x3x64xf32> {llvm.noalias}, %arg2: memref<1x112x112x64xf32> {llvm.noalias}) {
 # CHECK-NEXT:      %c6 = arith.constant 6 : index
-# CHECK-NEXT:      %c3 = arith.constant 3 : index
 # CHECK-NEXT:      %c2 = arith.constant 2 : index
 # CHECK-NEXT:      %0 = ub.poison : f32
+# CHECK-NEXT:      %c3 = arith.constant 3 : index
 # CHECK-NEXT:      %c7 = arith.constant 7 : index
 # CHECK-NEXT:      %c16 = arith.constant 16 : index
 # CHECK-NEXT:      %c4 = arith.constant 4 : index
@@ -191,162 +197,144 @@ print(f"CODE: {res}")
 # CHECK-NEXT:                  %extracted_slice_23 = tensor.extract_slice %extracted_slice_14[0, 0, %c2, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
 # CHECK-NEXT:                  %extracted_slice_24 = tensor.extract_slice %inserted_slice_22[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
 # CHECK-NEXT:                  %extracted_slice_25 = tensor.extract_slice %extracted_slice_23[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_26 = tensor.extract_slice %extracted_slice_15[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_27 = tensor.extract_slice %extracted_slice_24[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_28 = tensor.extract %extracted_slice_25[] : tensor<f32>
-# CHECK-NEXT:                  %17 = vector.broadcast %extracted_28 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %extracted_slice_26 = tensor.extract_slice %extracted_slice_24[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_27 = tensor.extract %extracted_slice_25[] : tensor<f32>
+# CHECK-NEXT:                  %17 = vector.broadcast %extracted_27 : f32 to vector<16xf32>
 # CHECK-NEXT:                  %18 = vector.transfer_read %extracted_slice_26[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %19 = vector.transfer_read %extracted_slice_27[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %20 = arith.mulf %17, %18 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %21 = arith.addf %19, %20 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %22 = vector.transfer_write %21, %extracted_slice_27[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_29 = tensor.insert_slice %22 into %extracted_slice_24[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_30 = tensor.insert_slice %inserted_slice_29 into %inserted_slice_22[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_31 = tensor.extract_slice %extracted_slice_14[0, 0, %c4, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_32 = tensor.extract_slice %inserted_slice_30[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_33 = tensor.extract_slice %extracted_slice_31[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_34 = tensor.extract_slice %extracted_slice_15[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_35 = tensor.extract_slice %extracted_slice_32[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_36 = tensor.extract %extracted_slice_33[] : tensor<f32>
-# CHECK-NEXT:                  %23 = vector.broadcast %extracted_36 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %24 = vector.transfer_read %extracted_slice_34[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %25 = vector.transfer_read %extracted_slice_35[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %26 = arith.mulf %23, %24 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %27 = arith.addf %25, %26 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %28 = vector.transfer_write %27, %extracted_slice_35[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_37 = tensor.insert_slice %28 into %extracted_slice_32[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_38 = tensor.insert_slice %inserted_slice_37 into %inserted_slice_30[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_39 = tensor.extract_slice %extracted_slice_14[0, 0, %c6, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_40 = tensor.extract_slice %inserted_slice_38[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_41 = tensor.extract_slice %extracted_slice_39[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_42 = tensor.extract_slice %extracted_slice_15[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_43 = tensor.extract_slice %extracted_slice_40[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_44 = tensor.extract %extracted_slice_41[] : tensor<f32>
-# CHECK-NEXT:                  %29 = vector.broadcast %extracted_44 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %30 = vector.transfer_read %extracted_slice_42[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %31 = vector.transfer_read %extracted_slice_43[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %32 = arith.mulf %29, %30 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %33 = arith.addf %31, %32 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %34 = vector.transfer_write %33, %extracted_slice_43[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_45 = tensor.insert_slice %34 into %extracted_slice_40[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_46 = tensor.insert_slice %inserted_slice_45 into %inserted_slice_38[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_47 = tensor.extract_slice %extracted_slice_12[0, 0, 0, %c1] [1, 1, 7, 1] [1, 1, 1, 1] : tensor<1x1x7x3xf32> to tensor<1x1x7x1xf32>
-# CHECK-NEXT:                  %extracted_slice_48 = tensor.extract_slice %extracted_slice_13[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x3x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_49 = tensor.extract_slice %extracted_slice_47[0, 0, %c0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_50 = tensor.extract_slice %inserted_slice_46[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_51 = tensor.extract_slice %extracted_slice_49[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_52 = tensor.extract_slice %extracted_slice_48[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_53 = tensor.extract_slice %extracted_slice_50[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_54 = tensor.extract %extracted_slice_51[] : tensor<f32>
-# CHECK-NEXT:                  %35 = vector.broadcast %extracted_54 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %36 = vector.transfer_read %extracted_slice_52[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %37 = vector.transfer_read %extracted_slice_53[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %38 = arith.mulf %35, %36 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %39 = arith.addf %37, %38 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %40 = vector.transfer_write %39, %extracted_slice_53[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_55 = tensor.insert_slice %40 into %extracted_slice_50[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_56 = tensor.insert_slice %inserted_slice_55 into %inserted_slice_46[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_57 = tensor.extract_slice %extracted_slice_47[0, 0, %c2, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_58 = tensor.extract_slice %inserted_slice_56[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_59 = tensor.extract_slice %extracted_slice_57[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_60 = tensor.extract_slice %extracted_slice_48[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_61 = tensor.extract_slice %extracted_slice_58[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_62 = tensor.extract %extracted_slice_59[] : tensor<f32>
-# CHECK-NEXT:                  %41 = vector.broadcast %extracted_62 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %42 = vector.transfer_read %extracted_slice_60[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %43 = vector.transfer_read %extracted_slice_61[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %44 = arith.mulf %41, %42 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %45 = arith.addf %43, %44 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %46 = vector.transfer_write %45, %extracted_slice_61[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_63 = tensor.insert_slice %46 into %extracted_slice_58[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_64 = tensor.insert_slice %inserted_slice_63 into %inserted_slice_56[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_65 = tensor.extract_slice %extracted_slice_47[0, 0, %c4, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_66 = tensor.extract_slice %inserted_slice_64[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_67 = tensor.extract_slice %extracted_slice_65[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_68 = tensor.extract_slice %extracted_slice_48[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_69 = tensor.extract_slice %extracted_slice_66[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_70 = tensor.extract %extracted_slice_67[] : tensor<f32>
-# CHECK-NEXT:                  %47 = vector.broadcast %extracted_70 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %48 = vector.transfer_read %extracted_slice_68[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %49 = vector.transfer_read %extracted_slice_69[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %50 = arith.mulf %47, %48 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %19 = arith.mulf %17, %12 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %20 = arith.addf %18, %19 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %21 = vector.transfer_write %20, %extracted_slice_26[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_28 = tensor.insert_slice %21 into %extracted_slice_24[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_29 = tensor.insert_slice %inserted_slice_28 into %inserted_slice_22[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_30 = tensor.extract_slice %extracted_slice_14[0, 0, %c4, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_31 = tensor.extract_slice %inserted_slice_29[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_32 = tensor.extract_slice %extracted_slice_30[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_33 = tensor.extract_slice %extracted_slice_31[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_34 = tensor.extract %extracted_slice_32[] : tensor<f32>
+# CHECK-NEXT:                  %22 = vector.broadcast %extracted_34 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %23 = vector.transfer_read %extracted_slice_33[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %24 = arith.mulf %22, %12 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %25 = arith.addf %23, %24 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %26 = vector.transfer_write %25, %extracted_slice_33[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_35 = tensor.insert_slice %26 into %extracted_slice_31[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_36 = tensor.insert_slice %inserted_slice_35 into %inserted_slice_29[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_37 = tensor.extract_slice %extracted_slice_14[0, 0, %c6, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_38 = tensor.extract_slice %inserted_slice_36[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_39 = tensor.extract_slice %extracted_slice_37[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_40 = tensor.extract_slice %extracted_slice_38[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_41 = tensor.extract %extracted_slice_39[] : tensor<f32>
+# CHECK-NEXT:                  %27 = vector.broadcast %extracted_41 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %28 = vector.transfer_read %extracted_slice_40[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %29 = arith.mulf %27, %12 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %30 = arith.addf %28, %29 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %31 = vector.transfer_write %30, %extracted_slice_40[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_42 = tensor.insert_slice %31 into %extracted_slice_38[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_43 = tensor.insert_slice %inserted_slice_42 into %inserted_slice_36[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_44 = tensor.extract_slice %extracted_slice_12[0, 0, 0, %c1] [1, 1, 7, 1] [1, 1, 1, 1] : tensor<1x1x7x3xf32> to tensor<1x1x7x1xf32>
+# CHECK-NEXT:                  %extracted_slice_45 = tensor.extract_slice %extracted_slice_13[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x3x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_46 = tensor.extract_slice %extracted_slice_44[0, 0, %c0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_47 = tensor.extract_slice %inserted_slice_43[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_48 = tensor.extract_slice %extracted_slice_46[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_49 = tensor.extract_slice %extracted_slice_45[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_slice_50 = tensor.extract_slice %extracted_slice_47[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_51 = tensor.extract %extracted_slice_48[] : tensor<f32>
+# CHECK-NEXT:                  %32 = vector.broadcast %extracted_51 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %33 = vector.transfer_read %extracted_slice_49[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %34 = vector.transfer_read %extracted_slice_50[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %35 = arith.mulf %32, %33 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %36 = arith.addf %34, %35 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %37 = vector.transfer_write %36, %extracted_slice_50[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_52 = tensor.insert_slice %37 into %extracted_slice_47[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_53 = tensor.insert_slice %inserted_slice_52 into %inserted_slice_43[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_54 = tensor.extract_slice %extracted_slice_44[0, 0, %c2, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_55 = tensor.extract_slice %inserted_slice_53[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_56 = tensor.extract_slice %extracted_slice_54[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_57 = tensor.extract_slice %extracted_slice_55[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_58 = tensor.extract %extracted_slice_56[] : tensor<f32>
+# CHECK-NEXT:                  %38 = vector.broadcast %extracted_58 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %39 = vector.transfer_read %extracted_slice_57[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %40 = arith.mulf %38, %33 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %41 = arith.addf %39, %40 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %42 = vector.transfer_write %41, %extracted_slice_57[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_59 = tensor.insert_slice %42 into %extracted_slice_55[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_60 = tensor.insert_slice %inserted_slice_59 into %inserted_slice_53[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_61 = tensor.extract_slice %extracted_slice_44[0, 0, %c4, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_62 = tensor.extract_slice %inserted_slice_60[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_63 = tensor.extract_slice %extracted_slice_61[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_64 = tensor.extract_slice %extracted_slice_62[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_65 = tensor.extract %extracted_slice_63[] : tensor<f32>
+# CHECK-NEXT:                  %43 = vector.broadcast %extracted_65 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %44 = vector.transfer_read %extracted_slice_64[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %45 = arith.mulf %43, %33 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %46 = arith.addf %44, %45 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %47 = vector.transfer_write %46, %extracted_slice_64[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_66 = tensor.insert_slice %47 into %extracted_slice_62[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_67 = tensor.insert_slice %inserted_slice_66 into %inserted_slice_60[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_68 = tensor.extract_slice %extracted_slice_44[0, 0, %c6, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_69 = tensor.extract_slice %inserted_slice_67[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_70 = tensor.extract_slice %extracted_slice_68[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_71 = tensor.extract_slice %extracted_slice_69[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_72 = tensor.extract %extracted_slice_70[] : tensor<f32>
+# CHECK-NEXT:                  %48 = vector.broadcast %extracted_72 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %49 = vector.transfer_read %extracted_slice_71[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %50 = arith.mulf %48, %33 fastmath<fast> : vector<16xf32>
 # CHECK-NEXT:                  %51 = arith.addf %49, %50 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %52 = vector.transfer_write %51, %extracted_slice_69[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_71 = tensor.insert_slice %52 into %extracted_slice_66[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_72 = tensor.insert_slice %inserted_slice_71 into %inserted_slice_64[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_73 = tensor.extract_slice %extracted_slice_47[0, 0, %c6, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_74 = tensor.extract_slice %inserted_slice_72[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_75 = tensor.extract_slice %extracted_slice_73[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_76 = tensor.extract_slice %extracted_slice_48[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_77 = tensor.extract_slice %extracted_slice_74[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_78 = tensor.extract %extracted_slice_75[] : tensor<f32>
-# CHECK-NEXT:                  %53 = vector.broadcast %extracted_78 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %54 = vector.transfer_read %extracted_slice_76[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %55 = vector.transfer_read %extracted_slice_77[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %52 = vector.transfer_write %51, %extracted_slice_71[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_73 = tensor.insert_slice %52 into %extracted_slice_69[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_74 = tensor.insert_slice %inserted_slice_73 into %inserted_slice_67[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_75 = tensor.extract_slice %extracted_slice_12[0, 0, 0, %c2] [1, 1, 7, 1] [1, 1, 1, 1] : tensor<1x1x7x3xf32> to tensor<1x1x7x1xf32>
+# CHECK-NEXT:                  %extracted_slice_76 = tensor.extract_slice %extracted_slice_13[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x3x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_77 = tensor.extract_slice %extracted_slice_75[0, 0, %c0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_78 = tensor.extract_slice %inserted_slice_74[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_79 = tensor.extract_slice %extracted_slice_77[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_80 = tensor.extract_slice %extracted_slice_76[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_slice_81 = tensor.extract_slice %extracted_slice_78[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_82 = tensor.extract %extracted_slice_79[] : tensor<f32>
+# CHECK-NEXT:                  %53 = vector.broadcast %extracted_82 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %54 = vector.transfer_read %extracted_slice_80[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %55 = vector.transfer_read %extracted_slice_81[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
 # CHECK-NEXT:                  %56 = arith.mulf %53, %54 fastmath<fast> : vector<16xf32>
 # CHECK-NEXT:                  %57 = arith.addf %55, %56 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %58 = vector.transfer_write %57, %extracted_slice_77[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_79 = tensor.insert_slice %58 into %extracted_slice_74[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_80 = tensor.insert_slice %inserted_slice_79 into %inserted_slice_72[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_81 = tensor.extract_slice %extracted_slice_12[0, 0, 0, %c2] [1, 1, 7, 1] [1, 1, 1, 1] : tensor<1x1x7x3xf32> to tensor<1x1x7x1xf32>
-# CHECK-NEXT:                  %extracted_slice_82 = tensor.extract_slice %extracted_slice_13[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x3x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_83 = tensor.extract_slice %extracted_slice_81[0, 0, %c0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_84 = tensor.extract_slice %inserted_slice_80[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_85 = tensor.extract_slice %extracted_slice_83[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_86 = tensor.extract_slice %extracted_slice_82[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_87 = tensor.extract_slice %extracted_slice_84[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_88 = tensor.extract %extracted_slice_85[] : tensor<f32>
-# CHECK-NEXT:                  %59 = vector.broadcast %extracted_88 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %60 = vector.transfer_read %extracted_slice_86[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %61 = vector.transfer_read %extracted_slice_87[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %62 = arith.mulf %59, %60 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %63 = arith.addf %61, %62 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %64 = vector.transfer_write %63, %extracted_slice_87[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_89 = tensor.insert_slice %64 into %extracted_slice_84[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_90 = tensor.insert_slice %inserted_slice_89 into %inserted_slice_80[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_91 = tensor.extract_slice %extracted_slice_81[0, 0, %c2, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_92 = tensor.extract_slice %inserted_slice_90[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_93 = tensor.extract_slice %extracted_slice_91[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_94 = tensor.extract_slice %extracted_slice_82[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_95 = tensor.extract_slice %extracted_slice_92[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_96 = tensor.extract %extracted_slice_93[] : tensor<f32>
-# CHECK-NEXT:                  %65 = vector.broadcast %extracted_96 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %66 = vector.transfer_read %extracted_slice_94[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %67 = vector.transfer_read %extracted_slice_95[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %68 = arith.mulf %65, %66 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %69 = arith.addf %67, %68 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %70 = vector.transfer_write %69, %extracted_slice_95[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_97 = tensor.insert_slice %70 into %extracted_slice_92[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_98 = tensor.insert_slice %inserted_slice_97 into %inserted_slice_90[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_99 = tensor.extract_slice %extracted_slice_81[0, 0, %c4, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_100 = tensor.extract_slice %inserted_slice_98[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %58 = vector.transfer_write %57, %extracted_slice_81[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_83 = tensor.insert_slice %58 into %extracted_slice_78[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_84 = tensor.insert_slice %inserted_slice_83 into %inserted_slice_74[0, 0, %c0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_85 = tensor.extract_slice %extracted_slice_75[0, 0, %c2, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_86 = tensor.extract_slice %inserted_slice_84[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_87 = tensor.extract_slice %extracted_slice_85[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_88 = tensor.extract_slice %extracted_slice_86[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_89 = tensor.extract %extracted_slice_87[] : tensor<f32>
+# CHECK-NEXT:                  %59 = vector.broadcast %extracted_89 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %60 = vector.transfer_read %extracted_slice_88[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %61 = arith.mulf %59, %54 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %62 = arith.addf %60, %61 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %63 = vector.transfer_write %62, %extracted_slice_88[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_90 = tensor.insert_slice %63 into %extracted_slice_86[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_91 = tensor.insert_slice %inserted_slice_90 into %inserted_slice_84[0, 0, %c1, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_92 = tensor.extract_slice %extracted_slice_75[0, 0, %c4, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_93 = tensor.extract_slice %inserted_slice_91[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %extracted_slice_94 = tensor.extract_slice %extracted_slice_92[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
+# CHECK-NEXT:                  %extracted_slice_95 = tensor.extract_slice %extracted_slice_93[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_96 = tensor.extract %extracted_slice_94[] : tensor<f32>
+# CHECK-NEXT:                  %64 = vector.broadcast %extracted_96 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %65 = vector.transfer_read %extracted_slice_95[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %66 = arith.mulf %64, %54 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %67 = arith.addf %65, %66 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %68 = vector.transfer_write %67, %extracted_slice_95[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_97 = tensor.insert_slice %68 into %extracted_slice_93[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_98 = tensor.insert_slice %inserted_slice_97 into %inserted_slice_91[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_99 = tensor.extract_slice %extracted_slice_75[0, 0, %c6, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
+# CHECK-NEXT:                  %extracted_slice_100 = tensor.extract_slice %inserted_slice_98[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
 # CHECK-NEXT:                  %extracted_slice_101 = tensor.extract_slice %extracted_slice_99[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_102 = tensor.extract_slice %extracted_slice_82[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_103 = tensor.extract_slice %extracted_slice_100[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_104 = tensor.extract %extracted_slice_101[] : tensor<f32>
-# CHECK-NEXT:                  %71 = vector.broadcast %extracted_104 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %72 = vector.transfer_read %extracted_slice_102[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %73 = vector.transfer_read %extracted_slice_103[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %74 = arith.mulf %71, %72 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %75 = arith.addf %73, %74 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %76 = vector.transfer_write %75, %extracted_slice_103[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_105 = tensor.insert_slice %76 into %extracted_slice_100[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_106 = tensor.insert_slice %inserted_slice_105 into %inserted_slice_98[0, 0, %c2, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  %extracted_slice_107 = tensor.extract_slice %extracted_slice_81[0, 0, %c6, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x7x1xf32> to tensor<1x1x1x1xf32>
-# CHECK-NEXT:                  %extracted_slice_108 = tensor.extract_slice %inserted_slice_106[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x4x16xf32> to tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %extracted_slice_109 = tensor.extract_slice %extracted_slice_107[0, 0, 0, 0] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xf32> to tensor<f32>
-# CHECK-NEXT:                  %extracted_slice_110 = tensor.extract_slice %extracted_slice_82[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_slice_111 = tensor.extract_slice %extracted_slice_108[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
-# CHECK-NEXT:                  %extracted_112 = tensor.extract %extracted_slice_109[] : tensor<f32>
-# CHECK-NEXT:                  %77 = vector.broadcast %extracted_112 : f32 to vector<16xf32>
-# CHECK-NEXT:                  %78 = vector.transfer_read %extracted_slice_110[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %79 = vector.transfer_read %extracted_slice_111[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
-# CHECK-NEXT:                  %80 = arith.mulf %77, %78 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %81 = arith.addf %79, %80 fastmath<fast> : vector<16xf32>
-# CHECK-NEXT:                  %82 = vector.transfer_write %81, %extracted_slice_111[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
-# CHECK-NEXT:                  %inserted_slice_113 = tensor.insert_slice %82 into %extracted_slice_108[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
-# CHECK-NEXT:                  %inserted_slice_114 = tensor.insert_slice %inserted_slice_113 into %inserted_slice_106[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
-# CHECK-NEXT:                  scf.yield %inserted_slice_114 : tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  %extracted_slice_102 = tensor.extract_slice %extracted_slice_100[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> to tensor<16xf32>
+# CHECK-NEXT:                  %extracted_103 = tensor.extract %extracted_slice_101[] : tensor<f32>
+# CHECK-NEXT:                  %69 = vector.broadcast %extracted_103 : f32 to vector<16xf32>
+# CHECK-NEXT:                  %70 = vector.transfer_read %extracted_slice_102[%c0], %0 {in_bounds = [true]} : tensor<16xf32>, vector<16xf32>
+# CHECK-NEXT:                  %71 = arith.mulf %69, %54 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %72 = arith.addf %70, %71 fastmath<fast> : vector<16xf32>
+# CHECK-NEXT:                  %73 = vector.transfer_write %72, %extracted_slice_102[%c0] {in_bounds = [true]} : vector<16xf32>, tensor<16xf32>
+# CHECK-NEXT:                  %inserted_slice_104 = tensor.insert_slice %73 into %extracted_slice_100[0, 0, 0, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<16xf32> into tensor<1x1x1x16xf32>
+# CHECK-NEXT:                  %inserted_slice_105 = tensor.insert_slice %inserted_slice_104 into %inserted_slice_98[0, 0, %c3, 0] [1, 1, 1, 16] [1, 1, 1, 1] : tensor<1x1x1x16xf32> into tensor<1x1x4x16xf32>
+# CHECK-NEXT:                  scf.yield %inserted_slice_105 : tensor<1x1x4x16xf32>
 # CHECK-NEXT:                } {"./s"}
 # CHECK-NEXT:                scf.yield %10 : tensor<1x1x4x16xf32>
 # CHECK-NEXT:              } {"./r"}

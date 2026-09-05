@@ -13,6 +13,7 @@ from mlir.dialects.transform import (
     get_parent_op,
 )
 from mlir.dialects.transform.structured import (
+    HoistRedundantVectorTransfersOp,
     TileUsingForallOp,
     TileUsingForOp,
     VectorizeOp,
@@ -238,6 +239,7 @@ class MlirProgramInsertTransformPass:
                     handle=handle,
                     fuse_axes=fused_producers.get(schedule.node_ident),
                 )
+                self._hoist_and_unroll_reduction(schedule, scheduling_state)
                 if schedule.vectorization or self._always_vectorize:
                     self._post_vectorize(scheduling_state, schedule)
                 handle = scheduling_state.handle
@@ -375,11 +377,79 @@ class MlirProgramInsertTransformPass:
         if sched_state.all_loops:
             sched_state.handle = next(iter(sched_state.all_loops.values()))
 
-        # Unrolling
-        if schedule.unrolling:
+        reduction = set(schedule.reduction) if schedule.unrolling else set()
+
+        # Unroll only parallel dims here. Skipped under super-vectorization:
+        # hoisting the accumulator out of the reduction loop gives its transfers
+        # non-trivial layout maps.
+        if reduction and schedule.vectorization and not self._super_vectorize:
+            parallel = {
+                d
+                for d in schedule.unrolling
+                if schedule.dim_of_tile(d) not in reduction
+            }
+            self._unroll(permutation, schedule, sched_state, dims=parallel)
+        elif schedule.unrolling:
             self._unroll(permutation, schedule, sched_state)
 
         return sched_state
+
+    def _hoist_and_unroll_reduction(
+        self, schedule: MlirNodeSchedule, sched_state: SchedulingState
+    ) -> None:
+        reduction = set(schedule.reduction) if schedule.unrolling else set()
+        if not (
+            reduction
+            and schedule.vectorization
+            and sched_state.all_loops
+            and not self._super_vectorize
+        ):
+            return
+        # The only reduction loops unrolled into the register-resident bodies.
+        unroll_loops = [
+            loop_name
+            for loop_name in sched_state.all_loops
+            if loop_name in schedule.unrolling
+            and loop_name not in schedule.vectorization
+            and schedule.dim_of_tile(loop_name) in reduction
+        ]
+        self._hoist_registers(sched_state, unroll_loops)
+        for loop_name in unroll_loops:
+            loop_unroll(sched_state.all_loops[loop_name], schedule.unrolling[loop_name])
+
+    def _hoist_registers(
+        self, sched_state: SchedulingState, unroll_loops: list[str]
+    ) -> None:
+        func_op = get_parent_op(
+            transform.AnyOpType.get(),
+            sched_state.handle,
+            isolated_from_above=True,
+        )
+        func_op = transform.ApplyRegisteredPassOp(
+            transform.AnyOpType.get(),
+            func_op,
+            pass_name="resolve-ranked-shaped-type-result-dims",
+        ).result
+        transform.ApplyCommonSubexpressionEliminationOp(func_op)
+        func_op = HoistRedundantVectorTransfersOp(
+            transform.AnyOpType.get(), func_op
+        ).transformed
+        # The func-wide hoist invalidates every loop handle, but only a few are
+        # consumed afterwards: the reduction loops still to unroll, plus one
+        # anchor (the outermost loop) that serves as the post-vectorization
+        # handle. Re-acquire just those and drop the rest.
+        anchor = next(iter(sched_state.all_loops))
+        keep = {*unroll_loops, anchor}
+        for loop_name in list(sched_state.all_loops):
+            if loop_name in keep:
+                sched_state.all_loops[loop_name] = structured_match(
+                    results_=transform.AnyOpType.get(),
+                    target=func_op,
+                    op_attrs={loop_name: UnitAttr.get()},
+                )
+            else:
+                del sched_state.all_loops[loop_name]
+        sched_state.handle = sched_state.all_loops[anchor]
 
     def _fuse_producers_into_loop(
         self,
@@ -609,6 +679,7 @@ class MlirProgramInsertTransformPass:
         permutation: list[str],
         schedule: MlirNodeSchedule,
         sched_state: SchedulingState,
+        dims: set[str] | None = None,
     ):
         # TODO: LLVM metadata instead of transform unroll may
         # ultimately put less pressure on opt/llc front-end
@@ -617,6 +688,7 @@ class MlirProgramInsertTransformPass:
             if (
                 dim_name in schedule.unrolling
                 and dim_name not in schedule.vectorization
+                and (dims is None or dim_name in dims)
             ):
                 assert self._named_sequence is not None
                 loop_unroll(
