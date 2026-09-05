@@ -192,12 +192,16 @@ def build_mlir_node_backend(
     if not dims:
         raise Exception("Missing loop.dims attribute")
     op.attributes.pop("loop.dims", None)
+    # Reduction dims (declarative counterpart of loop.dims); optional.
+    reduction = get_string_list_attribute(op, "loop.reduction")
+    op.attributes.pop("loop.reduction", None)
     # Additional attributes
     loop_stamps = get_string_list_attribute(op, "loop.add_attributes")
 
     return MlirNodeBackend(
         source_op=op,
         dims=dims,
+        reduction=reduction,
         always_vectorize=always_vectorize,
         payload_name=node_name,
         concluding_passes=concluding_passes,

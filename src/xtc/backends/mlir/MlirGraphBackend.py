@@ -172,13 +172,16 @@ class MlirGraphBackend(MlirBackend):
         )
         nodes_dict = {}
         for attrs in block_attrs:
-            for (node_id, node), dims in zip(
-                attrs["nodes_map"].items(), attrs["dims_sizes"]
+            for (node_id, node), dims, reduction in zip(
+                attrs["nodes_map"].items(),
+                attrs["dims_sizes"],
+                attrs["reduction"],
             ):
                 nodes_dict[node_id] = MlirNodeBackend(
                     payload_name=node_id,
                     source_op=cast(Operation, node),
                     dims=dims,
+                    reduction=reduction,
                     no_alias=no_alias,
                     always_vectorize=always_vectorize,
                     concluding_passes=concluding_passes,

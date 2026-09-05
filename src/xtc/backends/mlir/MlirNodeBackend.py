@@ -23,6 +23,7 @@ class MlirNodeBackend(MlirBackend):
         payload_name: str = "f",
         concluding_passes: list[str] = [],
         loop_stamps: list[str] = [],
+        reduction: list[str] = [],
         always_vectorize: bool = False,
         no_alias: bool = True,
         id: str | None = None,
@@ -45,6 +46,7 @@ class MlirNodeBackend(MlirBackend):
             no_alias=no_alias,
         )
         self.dims = dims
+        self.reduction = reduction
         self.source_op = source_op
         # Specification of transformations
         self.loop_stamps = loop_stamps

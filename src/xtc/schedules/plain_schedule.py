@@ -33,11 +33,8 @@ class PlainNodeSchedule:
     distributed_buffers: dict[str, dict]
     fused: list[tuple[str, int]]
     fused_consumers: list[str]
-    # Optional caller-provided vector sizes, keyed by vectorized axis name.
-    # When an axis has a size, its dimension is vectorized with masking for
-    # non-divisible extents; axes absent from this mapping are vectorized to
-    # their (static) tile shape.
     vectorization_sizes: dict[str, int] = field(default_factory=dict)
+    reduction: list[str] = field(default_factory=list)
 
     def index_of_dim(self, dim: str) -> int:
         return self.dims.index(basename(dim))
@@ -96,11 +93,13 @@ class PlainNodeScheduler:
         node_ident: str,
         dims: list[str],
         loop_stamps: list[str] = [],
+        reduction: list[str] = [],
     ) -> None:
         self.node_name = node_name
         self.node_ident = node_ident
         self.dims = dims[:]
         self.loop_stamps = loop_stamps[:]
+        self.reduction = reduction[:]
         self.splits: dict[str, dict[str, int]] = {}
         self.tiles: dict[str, dict[str, int]] = {}
         self.permutation: dict[str, list[str]] = {}
@@ -123,6 +122,7 @@ class PlainNodeScheduler:
             node_ident=self.node_ident,
             dims=deepcopy(self.dims),
             loop_stamps=deepcopy(self.loop_stamps),
+            reduction=deepcopy(self.reduction),
             tiles=deepcopy(self.tiles),
             splits=deepcopy(self.splits),
             permutation=deepcopy(self.permutation),

@@ -26,11 +26,13 @@ class MlirNodeScheduler:
         node_ident: str,
         dims: list[str],
         loop_stamps: list[str] = [],
+        reduction: list[str] = [],
     ) -> None:
         self._plain_sch = PlainNodeScheduler(
             node_name,
             node_ident,
             dims,
+            reduction=reduction,
         )
 
     @property

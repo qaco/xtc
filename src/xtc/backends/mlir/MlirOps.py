@@ -265,6 +265,10 @@ class MlirOperatorMatmul(MlirOperator):
                 {"i": Ki, "j": Kj},
                 self.dims_sizes(),
             ],
+            "reduction": [
+                [],
+                list(self.dims("R")),
+            ],
             "output_nodes": [reduce],
         }
         return block, attrs
@@ -415,6 +419,12 @@ class MlirOperatorConv2D(MlirOperator):
                 {"b": Kb, "h": Kh, "w": Kw, "f": Kf},
                 self.dims_sizes(),
             ],
+            # Per node, aligned with nodes_map: the fill is parallel-only, the
+            # reduce carries the op's reduction dims.
+            "reduction": [
+                [],
+                list(self.dims("R")),
+            ],
             "output_nodes": [reduce],
         }
         return block, attrs
@@ -551,6 +561,9 @@ class MlirOperatorRelu(MlirOperator):
             },
             "dims_sizes": [
                 self.dims_sizes(),
+            ],
+            "reduction": [
+                list(self.dims("R")),
             ],
             "output_nodes": [relu],
         }
@@ -745,6 +758,10 @@ class MlirOperatorPad(MlirOperator):
                 self.dims_sizes(),
                 *([] if using_tensors else [self.dims_sizes()]),
             ],
+            "reduction": [
+                list(self.dims("R")),
+                *([] if using_tensors else [list(self.dims("R"))]),
+            ],
             "output_nodes": [copy],
         }
         return block, attrs
@@ -857,6 +874,7 @@ class MlirOperatorUnpad(MlirOperator):
                 copy_node_id: None if using_tensors else copy,
             },
             "dims_sizes": [*([] if using_tensors else [self.dims_sizes()])],
+            "reduction": [*([] if using_tensors else [list(self.dims("R"))])],
             "output_nodes": [copy],
         }
         return block, attrs

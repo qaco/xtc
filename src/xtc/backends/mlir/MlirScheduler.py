@@ -72,6 +72,7 @@ class MlirScheduler(itf.schd.Scheduler):
                 node_ident=backend.op_id_attribute,
                 dims=list(backend.dims),
                 loop_stamps=backend.loop_stamps,
+                reduction=list(backend.reduction),
             )
 
     @property
