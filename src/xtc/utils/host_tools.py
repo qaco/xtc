@@ -45,6 +45,9 @@ def binutils_prefix(arch: str = "") -> str:
     triple = target_triple(arch)
     if not triple:
         return ""
+    if platform.system() == "Linux" and target_arch(arch) == platform.machine():
+        # Native target: the host binutils handle it, no cross prefix needed
+        return ""
     if platform.system() == "Darwin" and triple == "aarch64-linux-gnu":
         # On darwin cross aarch64 binutils from aarch64-elf-binutils
         triple = "aarch64-elf"
