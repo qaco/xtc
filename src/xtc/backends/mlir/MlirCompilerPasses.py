@@ -2,7 +2,14 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2024-2026 The XTC Project Authors
 #
+import os
+
 from dataclasses import dataclass
+
+# Escape hatch to measure the accumulator hoist's contribution: when set, the
+# emitter falls back to the pre-hoist behaviour (unroll every dim inline, no
+# hoist), keeping everything else identical.
+_DISABLE_ACCUM_HOIST = bool(os.environ.get("XTC_DISABLE_ACCUM_HOIST"))
 
 from mlir.dialects import transform
 from mlir.dialects.transform import (
@@ -382,7 +389,12 @@ class MlirProgramInsertTransformPass:
         # Unroll only parallel dims here. Skipped under super-vectorization:
         # hoisting the accumulator out of the reduction loop gives its transfers
         # non-trivial layout maps.
-        if reduction and schedule.vectorization and not self._super_vectorize:
+        if (
+            reduction
+            and schedule.vectorization
+            and not self._super_vectorize
+            and not _DISABLE_ACCUM_HOIST
+        ):
             parallel = {
                 d
                 for d in schedule.unrolling
@@ -403,6 +415,7 @@ class MlirProgramInsertTransformPass:
             and schedule.vectorization
             and sched_state.all_loops
             and not self._super_vectorize
+            and not _DISABLE_ACCUM_HOIST
         ):
             return
         # The only reduction loops unrolled into the register-resident bodies.
